@@ -24,8 +24,8 @@ skip_llm = st.sidebar.checkbox("Skip LLM (metrics only)", value=False)
 ollama_model = st.sidebar.text_input("Ollama model", value="mistral:7b")
 save_json = st.sidebar.checkbox("Offer JSON download", value=True)
 
-st.title("🎤 VoiceCoach — Prosody + ASR Feedback")
-st.caption("Upload .wav or .m4a, analyze prosody (Praat), speed (Whisper), pauses, and get rubric + coaching feedback.")
+st.title("🎤 VoiceCoach — Research-Aligned Speech Analysis")
+st.caption("Advanced voice analysis with CPPs, articulation rate, stability metrics, NLP coherence, and research-backed scoring. Upload .wav or .m4a for comprehensive feedback.")
 
 # ---------------- HELPERS ----------------
 @st.cache_data(show_spinner=False)
@@ -126,26 +126,101 @@ if upload is not None:
     st.subheader("Transcript")
     st.write(report["asr"].get("text","(no text)"))
 
-    # Summary (two columns)
+    # Summary (research-aligned metrics)
     st.subheader("Summary")
     m = report["metrics"]
-    c1, c2 = st.columns(2)
+    c1, c2, c3 = st.columns(3)
+    
     with c1:
         st.metric("WPM", f"{m['wpm']:.0f}")
-        st.metric("Pause ratio", f"{m['pause_ratio']:.2f}")
-        st.metric("Tone variability", f"{m['tone_variability']:.1f}")
+        st.metric("Articulation Rate", f"{m.get('articulation_rate', 0.0):.1f} syll/sec")
+        st.metric("Pause Ratio", f"{m['pause_ratio']:.2f}")
+        
     with c2:
-        st.metric("Clarity index", f"{m['clarity_index']:.2f}")
-        st.metric("Filler ratio", f"{100*m['filler_ratio']:.1f}%")
+        st.metric("Clarity Index", f"{m['clarity_index']:.3f}")
+        st.metric("CPPs", f"{m.get('cpps_smooth_db', 0.0):.1f} dB")
+        st.metric("Filler Ratio", f"{100*m['filler_ratio']:.1f}%")
+        
+    with c3:
+        st.metric("Tone Variability", f"{m['tone_variability']:.3f}")
+        st.metric("Pitch Range", f"{m.get('pitch_range_hz', 0.0):.0f} Hz")
+        st.metric("Repair Rate", f"{100*m.get('repair_rate', 0.0):.1f}%")
 
-    # Rubric table
-    st.subheader("Rubric scores (1–5)")
+    # Rubric scores with detailed breakdown
+    st.subheader("Research-Aligned Rubric Scores (1–5)")
     rub = report["rubric"]
-    rub_df = pd.DataFrame({k: [v["score"], v["why"]] for k,v in rub.items()}, index=["score","why"]).T
-    st.dataframe(rub_df, use_container_width=True)
+    
+    # Main scores in columns
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        st.metric("Clarity", f"{rub['Clarity']['score']}/5", help=f"Weight: 20%")
+        st.metric("Confidence", f"{rub['Confidence']['score']}/5", help=f"Weight: 15%")
+    with c2:
+        st.metric("Tone", f"{rub['Tone']['score']}/5", help=f"Weight: 15%")
+        st.metric("Pacing", f"{rub['Pacing']['score']}/5", help=f"Weight: 15%")
+    with c3:
+        st.metric("Engagement", f"{rub['Engagement']['score']}/5", help=f"Weight: 15%")
+        st.metric("Cadence", f"{rub['Cadence']['score']}/5", help=f"Weight: 10%")
+    with c4:
+        st.metric("Flow", f"{rub['Flow']['score']}/5", help=f"Weight: 10%")
+    
+    # Detailed breakdown in expandable sections
+    with st.expander("📊 Detailed Score Breakdown"):
+        for category, score_data in rub.items():
+            st.write(f"**{category}** (Score: {score_data['score']}/5)")
+            st.write(f"*{score_data['why']}*")
+            
+            # Show component details if available
+            if 'details' in score_data:
+                details = score_data['details']
+                if isinstance(details, dict):
+                    detail_cols = st.columns(len(details))
+                    for i, (component, value) in enumerate(details.items()):
+                        with detail_cols[i]:
+                            st.metric(component.replace('_', ' ').title(), f"{value:.3f}")
+            st.markdown("---")
+
+    # Advanced Features Section
+    st.subheader("🔬 Advanced Voice Analysis")
+    
+    # Voice Quality Metrics
+    with st.expander("🎵 Voice Quality"):
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            st.metric("HNR", f"{m.get('hnr_mean_db', 0.0):.1f} dB", help="Harmonic-to-Noise Ratio")
+            st.metric("Jitter", f"{m.get('jitter_local', 0.0):.4f}", help="Pitch period variation")
+        with c2:
+            st.metric("CPPs", f"{m.get('cpps_smooth_db', 0.0):.1f} dB", help="Cepstral Peak Prominence")
+            st.metric("Shimmer", f"{m.get('shimmer_local', 0.0):.4f}", help="Amplitude variation")
+        with c3:
+            st.metric("Intensity Mean", f"{m.get('intensity_mean_db', 0.0):.1f} dB")
+            st.metric("Intensity Std", f"{m.get('intensity_std_db', 0.0):.1f} dB")
+
+    # Stability Analysis
+    with st.expander("📈 Stability Analysis"):
+        c1, c2 = st.columns(2)
+        with c1:
+            st.metric("Rate Variance", f"{m.get('rate_var_win', 0.0):.1f}", help="Speaking rate consistency")
+            st.metric("F0 Variance", f"{m.get('f0_var_win', 0.0):.1f}", help="Pitch consistency")
+        with c2:
+            st.metric("Intensity Variance", f"{m.get('intensity_var_win', 0.0):.1f}", help="Volume consistency")
+            st.metric("Final Fall Ratio", f"{m.get('final_fall_ratio', 0.0):.2f}", help="Natural sentence endings")
+
+    # NLP Features
+    with st.expander("📝 Speech Analysis"):
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            st.metric("Syllables", f"{m.get('syllable_count', 0)}", help="Total syllable count")
+            st.metric("Speech Time", f"{m.get('speech_time_sec', 0.0):.1f}s", help="Time excluding pauses")
+        with c2:
+            st.metric("Repair Count", f"{m.get('repair_count', 0)}", help="Disfluency repairs")
+            st.metric("Target Range Met", "✅" if m.get('target_range_met', False) else "❌", help="3.5-5.5 syll/sec")
+        with c3:
+            st.metric("Coherence Score", f"{m.get('coherence_score', 0.0):.3f}", help="Topic flow")
+            st.metric("Sentences", f"{m.get('sentence_count', 0)}", help="Sentence count")
 
     # Pause quality (table)
-    st.subheader("Pause quality")
+    st.subheader("Pause Analysis")
     pb = report["metrics"]["pause_bins"]
     pq_df = pd.DataFrame([
         {"bucket":"short (0.12–0.25s)",  "count": pb["short_count"],  "seconds": pb["short_sec"],  "rate/min": pb["short_rate_per_min"]},
