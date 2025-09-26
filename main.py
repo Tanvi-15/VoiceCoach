@@ -12,7 +12,7 @@ from rubric import RubricScorer
 import requests
 
 print("Starting VoiceCoach...")
-def run(audio_path: str, whisper_model: str, ollama_model: str, min_pause: float, skip_llm: bool=False) -> None:
+def run(audio_path: str, whisper_model: str, ollama_model: str, skip_llm: bool=False) -> None:
     wav = ensure_wav(audio_path, target_sr=16000)
     print("WAV loaded successfully")
     # --- Pipeline ---
@@ -37,8 +37,8 @@ def run(audio_path: str, whisper_model: str, ollama_model: str, min_pause: float
 
     lib = LibrosaProsody().extract(wav)
 
-    # Pauses from ASR word timestamps (no external VAD)
-    vad = PauseAnalyzer(min_pause_sec=min_pause).analyze(asr_out, praat["duration_sec"])
+    # VAD from ASR gaps with default thresholds (hard-coded in PauseAnalyzer)
+    vad = PauseAnalyzer().analyze(asr_out, praat["duration_sec"])
 
     m = Metrics().compute(asr_out, praat, lib, vad)
     r = RubricScorer().score(m)
@@ -62,19 +62,74 @@ def run(audio_path: str, whisper_model: str, ollama_model: str, min_pause: float
             "you can re-run with --ollama-model mistral:7b or use --skip-llm to bypass.)"
         )
 
-    # --- Final report: always printed ---
+    # --- Final report: comprehensive JSON matching UI display ---
     report = {
         "audio": audio_path,
-        "asr": {
-            k: (v if k != "words" else f"{len(v)} words with timestamps")
-            for k, v in asr_out.items()
+        "transcript": {
+            "text": asr_out.get("text", ""),
+            "word_count": len(asr_out.get("words", [])),
+            "words_with_timestamps": f"{len(asr_out.get('words', []))} words with timestamps"
         },
-        "praat": praat,
-        "librosa": lib,
-        "vad": vad,
-        "metrics": m,
-        "rubric": r,
-        "feedback": feedback,
+        "summary_metrics": {
+            "wpm": m.get('wpm', 0.0),
+            "articulation_rate": m.get('articulation_rate', 0.0),
+            "pause_ratio": m.get('pause_ratio', 0.0),
+            "clarity_index": m.get('clarity_index', 0.0),
+            "cpps_smooth_db": m.get('cpps_smooth_db', 0.0),
+            "filler_ratio": m.get('filler_ratio', 0.0),
+            "tone_variability": m.get('tone_variability', 0.0),
+            "pitch_range_hz": m.get('pitch_range_hz', 0.0),
+            "repair_rate": m.get('repair_rate', 0.0)
+        },
+        "rubric_scores": {
+            "clarity": {"score": r['Clarity']['score'], "weight": "20%"},
+            "confidence": {"score": r['Confidence']['score'], "weight": "15%"},
+            "tone": {"score": r['Tone']['score'], "weight": "15%"},
+            "pacing": {"score": r['Pacing']['score'], "weight": "15%"},
+            "engagement": {"score": r['Engagement']['score'], "weight": "15%"},
+            "cadence": {"score": r['Cadence']['score'], "weight": "10%"},
+            "flow": {"score": r['Flow']['score'], "weight": "10%"}
+        },
+        "detailed_rubric_breakdown": r,
+        "voice_quality_metrics": {
+            "hnr_mean_db": m.get('hnr_mean_db', 0.0),
+            "jitter_local": m.get('jitter_local', 0.0),
+            "cpps_smooth_db": m.get('cpps_smooth_db', 0.0),
+            "shimmer_local": m.get('shimmer_local', 0.0),
+            "intensity_mean_db": m.get('intensity_mean_db', 0.0),
+            "intensity_std_db": m.get('intensity_std_db', 0.0)
+        },
+        "stability_analysis": {
+            "rate_var_win": m.get('rate_var_win', 0.0),
+            "f0_var_win": m.get('f0_var_win', 0.0),
+            "intensity_var_win": m.get('intensity_var_win', 0.0),
+            "final_fall_ratio": m.get('final_fall_ratio', 0.0)
+        },
+        "speech_analysis": {
+            "syllable_count": m.get('syllable_count', 0),
+            "speech_time_sec": m.get('speech_time_sec', 0.0),
+            "repair_count": m.get('repair_count', 0),
+            "target_range_met": m.get('target_range_met', False),
+            "coherence_score": m.get('coherence_score', 0.0),
+            "sentence_count": m.get('sentence_count', 0)
+        },
+        "pause_analysis": {
+            "pause_bins": m.get("pause_bins", {}),
+            "good_pause_ratio": m.get('good_pause_ratio', 0.0),
+            "bad_pause_ratio": m.get('bad_pause_ratio', 0.0),
+            "pause_count": vad.get('pause_count', 0) if vad else 0,
+            "pause_ratio": vad.get('pause_ratio', 0.0) if vad else 0.0
+        },
+        "coaching_feedback": feedback,
+        # Raw data for advanced analysis
+        "raw_data": {
+            "asr": asr_out,
+            "praat": praat,
+            "librosa": lib,
+            "vad": vad,
+            "metrics": m,
+            "rubric": r
+        }
     }
     if llm_error:
         report["llm_error"] = llm_error
@@ -86,8 +141,7 @@ if __name__ == "__main__":
     ap.add_argument("--audio", required=True, help="Path to .wav/.m4a")
     ap.add_argument("--whisper", default="base.en", help="faster-whisper model size")
     ap.add_argument("--ollama-model", default="mistral:7b")
-    ap.add_argument("--min-pause", type=float, default=0.12, help="Seconds defining a pause between words")
     ap.add_argument("--skip-llm", action="store_true", help="Bypass Ollama and just print metrics")
     args = ap.parse_args()
     print("Arguments parsed successfully")
-    run(args.audio, args.whisper, args.ollama_model, args.min_pause, skip_llm=args.skip_llm)
+    run(args.audio, args.whisper, args.ollama_model, skip_llm=args.skip_llm)
